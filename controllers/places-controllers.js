@@ -1,5 +1,7 @@
 const uuid = require('uuid').v4;
 const { validationResult } = require('express-validator');
+const getCoordsForAddress = require('../util/location');
+const Place = require('../models/place');
 const HttpError = require('../models/http-error');
 
 let DUMMY_PLACES = [
@@ -45,25 +47,44 @@ const getPlacesByUserId = (req, res, next) => {
   res.json({ places });
 };
 
-const createPlace = (req, res, next) => {
+const createPlace = async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     console.log(errors);
-    throw new HttpError('Invalid inpus passed, please check your data', 422);
+    next(new HttpError('Invalid inpus passed, please check your data', 422));
   }
 
   // destructur the objects from body and store it inside createdPlace
-  const { title, description, coordinates, address, creator } = req.body;
-  const createdPlace = {
-    id: uuid(),
+  const { title, description, address, creator } = req.body;
+  
+  let coordinates;
+  
+  try {
+    coordinates = await getCoordsForAddress(address)
+  } catch (error) {
+    return next(error);
+  };
+  
+  const createdPlace = new Place({
     title,
     description,
-    location: coordinates,
     address,
+    location: coordinates,
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Empire_State_Building_%28aerial_view%29.jpg/400px-Empire_State_Building_%28aerial_view%29.jpg',
     creator
-  };
+  });
 
-  DUMMY_PLACES.push(createdPlace);
+  try {
+    await createdPlace.save();
+  } catch (err){
+    const error = new HttpError (
+      'Creating place failed, please try agian', 
+      500
+    );
+    return next(error);
+  }
+
+  // DUMMY_PLACES.push(createdPlace);
 
   res.status(201).json({ place: createdPlace });
 };
